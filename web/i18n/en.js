@@ -1,4 +1,4 @@
-// English UI strings: the source of truth. Every change here must be propagated to de, fr, it and rm.
+// English UI strings: the source of truth. Every change here must be propagated to de, fr, it, rm, es, nl, pl, pt and ro.
 // {name} placeholders are filled by t(); a key ending in _one is used when {n} is 1.
 export default {
  // Page chrome (index.html)

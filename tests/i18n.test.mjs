@@ -7,9 +7,12 @@ import fr from '../web/i18n/fr.js';
 import it from '../web/i18n/it.js';
 import rm from '../web/i18n/rm.js';
 import es from '../web/i18n/es.js';
+import nl from '../web/i18n/nl.js';
 import pl from '../web/i18n/pl.js';
+import pt from '../web/i18n/pt.js';
+import ro from '../web/i18n/ro.js';
 
-const translations={de,fr,it,rm,es,pl};
+const translations={de,fr,it,rm,es,nl,pl,pt,ro};
 const placeholders=text=>[...text.matchAll(/\{(\w+)\}/g)].map(m=>m[1]).sort();
 
 test('every UI language has exactly the English keys',()=>{
@@ -25,6 +28,11 @@ test('translations keep placeholders and are not empty',()=>{
 
 test('Swiss German never uses ß',()=>{
  for(const [key,value] of Object.entries(de))assert.ok(!/[ßẞ]/.test(value),`de.${key}`);
+});
+
+test('Romanian uses comma-below ș and ț, never cedilla ş and ţ',()=>{
+ for(const [key,value] of Object.entries(ro))assert.ok(!/[şţŞŢ]/.test(value),`ro.${key}`);
+ assert.ok(Object.values(ro).some(value=>/[șțȘȚ]/.test(value)),'ro uses comma-below letters');
 });
 
 test('every key referenced by the UI exists in English',async()=>{

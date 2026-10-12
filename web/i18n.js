@@ -1,9 +1,10 @@
 // UI language for the browser chrome. Separate from the per-run Report Language (report-languages.js).
-// Every key in ./i18n/en.js must exist in de, fr, it and rm (tests/i18n.test.mjs).
+// Every key in ./i18n/en.js must exist in de, fr, it, rm, es, nl, pl, pt and ro (tests/i18n.test.mjs).
 import en from './i18n/en.js';import de from './i18n/de.js';import fr from './i18n/fr.js';import it from './i18n/it.js';import rm from './i18n/rm.js';
-export const dictionaries={en,de,fr,it,rm};
-export const languages=[['en','English'],['de','Deutsch'],['fr','Français'],['it','Italiano'],['rm','Rumantsch']].map(([code,name])=>({code,name}));
-const locales={en:'en-GB',de:'de-CH',fr:'fr-CH',it:'it-CH',rm:'rm-CH'};
+import es from './i18n/es.js';import nl from './i18n/nl.js';import pl from './i18n/pl.js';import pt from './i18n/pt.js';import ro from './i18n/ro.js';
+export const dictionaries={en,de,fr,it,rm,es,nl,pl,pt,ro};
+export const languages=[['en','English'],['de','Deutsch'],['fr','Français'],['it','Italiano'],['rm','Rumantsch'],['es','Español'],['nl','Nederlands'],['pl','Polski'],['pt','Português'],['ro','Română']].map(([code,name])=>({code,name}));
+const locales={en:'en-GB',de:'de-CH',fr:'fr-CH',it:'it-CH',rm:'rm-CH',es:'es-ES',nl:'nl-NL',pl:'pl-PL',pt:'pt-PT',ro:'ro-RO'};
 let current='en';
 export const lang=()=>current;
 export const locale=()=>locales[current];
