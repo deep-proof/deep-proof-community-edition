@@ -1,0 +1,44 @@
+import {seededStore} from './support/seed.mjs';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {createALACatalog} from '../src/ala-catalog.mjs';
+import {createApp} from '../server.mjs';
+import {testCatalog} from './support/catalog.mjs';
+test('ALA catalog caches metadata, refreshes explicitly and retries failures without fabricated models',async()=>{
+ let calls=0,fail=false;
+ const catalog=createALACatalog('.', {read:async agent=>{calls++;if(fail)throw Object.assign(Error('Catalog unavailable'),{status:503});return agent?{models:[{id:'m1',label:'Model 1'},{id:'m1'},{id:null}]}:{agents:[{id:'agent-a',available:true},{id:'absent',available:false}]};}});
+ await Promise.all([catalog.agents(),catalog.agents()]);assert.equal(calls,1);
+ const a=await catalog.models('agent-a');assert.deepEqual(a.models,[{id:'m1',label:'Model 1'}]);await catalog.models('agent-a');assert.equal(calls,2);
+ await catalog.models('agent-a',{refresh:true});assert.equal(calls,3);
+ await assert.rejects(catalog.models('absent'),e=>e.status===400);
+ await assert.rejects(catalog.validate({agent:'agent-a',model:'different-model'}),e=>e.status===400);
+ assert.deepEqual(await catalog.validate({agent:'agent-a',model:''}),{agent:'agent-a',models:{},efforts:{}});
+ fail=true;await assert.rejects(catalog.models('agent-a',{refresh:true}),/Catalog unavailable/);
+ fail=false;assert.equal((await catalog.models('agent-a')).models.length,1);
+});
+test('configuration API authorizes catalog access and saves only an installed agent with its supported model',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'analyst-catalog-test-'));const catalog=testCatalog(),app=(await seededStore(dir),createApp)({dir,catalog});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));
+ t.after(async()=>{app.server.closeAllConnections();await new Promise(r=>app.server.close(r));app.db.close();await fs.rm(dir,{recursive:true,force:true});});
+ const base=`http://127.0.0.1:${app.server.address().port}/api`;
+ async function request(url,body,cookie=''){const r=await fetch(base+url,{method:body?'POST':'GET',headers:{'content-type':'application/json',cookie},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};}
+ const admin=(await request('/login',{username:'admin',password:'admin'})).cookie;
+ assert.equal((await request('/admin/coding-agents')).status,401);
+ await request('/admin/users',{username:'catalog-user',password:'password123',role:'user',active:true,typeIds:[]},admin);
+ const user=(await request('/login',{username:'catalog-user',password:'password123'})).cookie;
+ assert.equal((await request('/admin/coding-agents',null,user)).status,403);
+ assert.equal((await request('/admin/coding-agents/codex/models',null,user)).status,403);
+ const discovered=await request('/admin/coding-agents',null,admin);assert.equal(discovered.data.agents.length,3);assert.equal(discovered.data.agents[2].available,false);
+ assert.equal((await request('/admin/coding-agents/offline-agent/models',null,admin)).status,400);
+ for(const selection of [{agent:'unknown',model:''},{agent:'offline-agent',model:''},{agent:'claude',model:'gpt-6-luna'},{agent:'codex',model:123}])assert.equal((await request('/admin/settings',selection,admin)).status,400);
+ assert.equal((await request('/admin/settings',{agent:'claude',model:'test-claude-model'},admin)).status,200);
+ assert.deepEqual((await request('/admin/settings',null,admin)).data,{agent:'claude',model:'test-claude-model'});
+ const saved=JSON.parse(app.db.prepare('SELECT value FROM settings').get().value);assert.deepEqual(saved,{agent:'claude',models:{claude:'test-claude-model'},efforts:{}});
+ assert.equal((await request('/admin/settings',{agent:'codex',model:''},admin)).status,200);
+ assert.deepEqual((await request('/admin/settings',null,admin)).data,{agent:'codex',model:''});
+ catalog.validate=async()=>{throw Object.assign(Error('Catalog unavailable'),{status:503});};
+ assert.equal((await request('/admin/settings',{agent:'claude',model:'test-claude-model'},admin)).status,503);
+ assert.deepEqual((await request('/admin/settings',null,admin)).data,{agent:'codex',model:''});
+});

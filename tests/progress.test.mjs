@@ -1,0 +1,20 @@
+import {seededStore} from './support/seed.mjs';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {createApp} from '../server.mjs';
+import {analysisFolder} from '../src/artifacts.mjs';
+test('progress streams escaped updates, finishes, and enforces session access',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'analyst-events-'));const {server,db}=(await seededStore(dir),createApp)({dir});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ t.after(async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));db.close();await fs.rm(dir,{recursive:true,force:true});});
+ const base=`http://127.0.0.1:${server.address().port}/api`;
+ const login=await fetch(base+'/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'admin',password:'admin'})});const cookie=login.headers.get('set-cookie').split(';')[0];
+ db.prepare('INSERT INTO runs VALUES(?,?,?,?,?,?,?)').run('stream-check','nexora-software',new Date().toISOString(),'running','{}',null,null);
+ const folder=analysisFolder(dir,'nexora-software','stream-check');await fs.mkdir(folder,{recursive:true});await fs.writeFile(path.join(folder,'progress.md'),'Earlier update.\n\n---\n\n**Checking evidence.** <script>alert(1)</script>');
+ const url=base+'/projects/nexora-software/analyses/stream-check/events';assert.equal((await fetch(url)).status,401);
+ const response=await fetch(url,{headers:{cookie},signal:AbortSignal.timeout(8000)});assert.match(response.headers.get('content-type'),/text\/event-stream/);const reader=response.body.getReader();const first=new TextDecoder().decode((await reader.read()).value);assert.match(first,/<strong>Checking evidence/);assert.doesNotMatch(first,/<script>|Earlier update/);
+ db.prepare("UPDATE runs SET status='completed' WHERE id='stream-check'").run();let remaining='';for(;;){const {done,value}=await reader.read();if(done)break;remaining+=new TextDecoder().decode(value);}assert.match(remaining,/completed/);
+ db.prepare("UPDATE runs SET status='running' WHERE id='stream-check'").run();const second=await fetch(url,{headers:{cookie},signal:AbortSignal.timeout(8000)});const next=second.body.getReader();await next.read();db.prepare('DELETE FROM sessions').run();let revoked='';for(;;){const {done,value}=await next.read();if(done)break;revoked+=new TextDecoder().decode(value);}assert.match(revoked,/revoked/);
+});
