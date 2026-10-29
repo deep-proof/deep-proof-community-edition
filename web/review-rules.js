@@ -1,5 +1,6 @@
 import {MarkdownView} from './markdown.js';
 import {t} from './i18n.js';
+import {cautionBadge} from './caution.js';
 const $=selector=>document.querySelector(selector);
 const drafts=new Map();
 const key=(ctx,id)=>`analyst-rules:${ctx.userId}:${id}`;
@@ -16,7 +17,7 @@ async function payload(file){
 }
 export function openTypeBrief(ctx){
  let createdId=null,creating=false;const selected=[];
- ctx.modal(`<span class="eyebrow">${t('brief_eyebrow')}</span><h2>${t('add_analyst_skill')}</h2><p class="muted">${t('brief_lead')}</p><form id="typeBriefForm"><label>${t('analyst_skill_name')}<input name="name" required maxlength="120" autocomplete="off"></label><label>${t('your_instructions')}<textarea name="brief" rows="6" maxlength="40000" required placeholder="${ctx.esc(t('brief_placeholder'))}"></textarea></label><label>${t('reference_files')}<input id="creationFiles" type="file" multiple accept="${formats}"></label><p class="muted">${t('brief_formats')}</p><div id="pickedFiles" class="reference-list"></div><p id="creationProgress" role="status" class="muted"></p><div class="dialog-actions"><button type="submit" class="button">${t('create_and_generate')}</button></div></form>`,async(b,form)=>{
+ ctx.modal(`<span class="eyebrow">${t('brief_eyebrow')}</span><h2>${t('add_analyst_skill')}</h2><p class="muted">${t('brief_lead')}</p><div class="trust-banner demo" role="note">${cautionBadge()}<p>${t('skill_setup_warning')}</p></div><form id="typeBriefForm"><label>${t('analyst_skill_name')}<input name="name" required maxlength="120" autocomplete="off"></label><label>${t('your_instructions')}<textarea name="brief" rows="6" maxlength="40000" required placeholder="${ctx.esc(t('brief_placeholder'))}"></textarea></label><label>${t('reference_files')}<input id="creationFiles" type="file" multiple accept="${formats}"></label><p class="muted">${t('brief_formats')}</p><div id="pickedFiles" class="reference-list"></div><p id="creationProgress" role="status" class="muted"></p><div class="dialog-actions"><button type="submit" class="button">${t('create_and_generate')}</button></div></form>`,async(b,form)=>{
   const progress=form.querySelector('#creationProgress');creating=true;form.querySelector('#creationFiles').disabled=true;draw();
   try{
    if(!createdId)createdId=(await ctx.api('/admin/type-drafts',ctx.post({name:b.name,brief:b.brief}))).id;

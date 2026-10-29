@@ -82,3 +82,93 @@ main.rules-page{max-width:none;padding:0.875rem 1.5rem 1.25rem}.rules-page #rule
 :root[data-theme=dark] :is(.topbar,footer){background:var(--bg)}
 @media(max-width:1600px){.brand-divider,.brand-caption{display:none}}
 dialog{background:var(--surface);color:var(--ink)}
+
+.report-toolbar{flex-wrap:wrap;gap:.75rem}.report-toolbar>#sectionTitle{flex:1 1 12rem}.report-toolbar>.text-link{flex:0 0 auto}@media(max-width:760px){.report-toolbar>#sectionTitle{flex-basis:100%}.report-toolbar>.text-link{font-size:.75rem}}
+#qualityOptions [hidden]{display:none}#qualityOptions{margin-top:1rem}.verification-status{margin:0 0 1rem}
+
+/* Model picker: a button that opens a searchable list, so the filter only appears while choosing. */
+.visually-hidden{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.field-label{display:block;font-size:.75rem;font-weight:550;margin-top:1.25rem}
+.model-picker{position:relative;margin-top:.5rem}
+.model-picker-button{display:flex;align-items:center;justify-content:space-between;gap:.75rem;width:100%;text-align:left;border:1px solid var(--line);border-radius:.5rem;padding:.75rem;background:var(--surface-2);color:var(--ink);font-size:.875rem}
+.model-picker-button:disabled{opacity:.6;cursor:not-allowed}
+.model-picker-button:focus-visible{outline:.125rem solid var(--focus);outline-offset:1px}
+.model-picker-value{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.model-picker-caret{color:var(--muted)}
+.model-picker-popup{position:absolute;z-index:20;left:0;right:0;top:calc(100% + .25rem);background:var(--surface);border:1px solid var(--line-strong);border-radius:.625rem;box-shadow:0 .75rem 2rem color-mix(in srgb,var(--shadow-ink) 18%,transparent);padding:.5rem}
+.model-picker-popup[hidden]{display:none}
+.model-picker-popup input{margin:0 0 .5rem;font-size:.875rem}
+.model-picker-list{list-style:none;margin:0;padding:0;max-height:15rem;overflow:auto}
+.model-picker-list [role=option]{padding:.5rem .625rem;border-radius:.375rem;font-size:.875rem;cursor:pointer;overflow-wrap:anywhere}
+.model-picker-list [role=option].active{background:var(--accent-soft);color:var(--accent)}
+.model-picker-list [role=option][aria-selected=true]{font-weight:650}
+.model-picker-list [aria-disabled=true]{opacity:.55;cursor:not-allowed}
+.model-picker-empty{padding:.75rem .625rem;font-size:.875rem;color:var(--muted)}
+/* Live console */
+.console-setting{margin-top:.5rem}.console-setting .check{font-size:.875rem;margin-top:.5rem}
+.console-panel{width:100%;margin-top:1rem}.console-panel[hidden]{display:none}
+.console-log{margin:0;max-height:20rem;overflow:auto;text-align:left;background:var(--panel);color:var(--on-panel);border-radius:.625rem;padding:.875rem 1rem;font:.75rem/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.analysis-running #consoleOpen{margin-top:1rem}
+
+/* One horizontal gutter for header, pages and footer, so they align and use the desktop width. */
+:root{--page-x:clamp(.75rem,1.2vw,1rem);--page-max:120rem;--page-gutter:max(var(--page-x),calc((100vw - var(--page-max))/2 + var(--page-x)))}
+.topbar,main,main.workspace-page,main.rules-page,footer{padding-left:var(--page-gutter);padding-right:var(--page-gutter)}
+main,main.workspace-page,main.rules-page,footer{max-width:none}
+footer{margin:0}
+.system-alert{width:auto;max-width:none;margin-left:var(--page-gutter);margin-right:var(--page-gutter)}
+
+/* Quality checks of a report */
+.checks-entry .count{margin-left:.375rem;padding:.0625rem .4375rem;border-radius:1rem;background:var(--accent-soft);color:var(--accent);font-size:.75rem;font-weight:650}
+.check-list{display:grid;gap:1rem;margin-top:1rem}
+.check-card{border:1px solid var(--line);border-radius:.75rem;padding:1rem 1.125rem;background:var(--surface)}
+.check-card header{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.check-chip{border:1px solid var(--line);border-radius:1rem;padding:.125rem .625rem;font-size:.75rem;color:var(--muted)}
+.check-chip.warn{border-color:var(--demo-line);background:var(--demo-bg);color:var(--demo-ink)}
+.check-outcome{margin:.75rem 0 .25rem;font-weight:650}.check-outcome.found{color:var(--danger)}.check-outcome.failed{color:var(--danger);font-weight:500}
+.check-findings{list-style:none;margin:.5rem 0 .75rem;padding:0;display:grid;gap:.5rem}
+.check-findings li{font-size:.875rem;line-height:1.5}
+.check-sev{display:inline-block;min-width:4.75rem;text-align:center;border-radius:.375rem;padding:.0625rem .5rem;margin-right:.5rem;font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:var(--tint);color:var(--muted)}
+.check-sev.sev-critical,.check-sev.sev-major{background:var(--danger-bg);color:var(--danger)}.check-sev.sev-moderate{background:var(--warn-bg);color:var(--warn)}
+form [hidden]{display:none!important}
+
+/* Analysis History as a plain list: name, then relative time (exact date and time in the tooltip). */
+.run-history{padding:1rem .875rem .75rem;border-bottom:1px solid var(--line)}
+.run-history h3{font-size:.75rem;letter-spacing:0;color:var(--muted);font-weight:650;margin:0 0 .5rem}
+.run-history ul{list-style:none;margin:0;padding:0;max-height:11rem;overflow:auto;display:grid;gap:.125rem}
+.run-history a{display:flex;flex-direction:column;gap:.125rem;padding:.5rem .625rem;border:1px solid transparent;border-radius:.5rem;text-decoration:none;color:var(--ink)}
+.run-history a:hover{background:var(--tint)}
+.run-history a[aria-current=page]{background:var(--accent-soft);border-color:var(--line);color:var(--accent)}
+.run-name{font-size:.8125rem;font-weight:600;overflow-wrap:anywhere}
+.run-meta{font-size:.75rem;color:var(--muted)}
+.run-status{margin-left:.25rem;padding:.0625rem .4375rem;border-radius:1rem;font-size:.6875rem;background:var(--tint)}
+.run-status.failed{background:var(--danger-bg);color:var(--danger)}.run-status.running{background:var(--accent-soft);color:var(--accent)}
+@media(max-width:760px){.run-history ul{max-height:8rem}}
+
+/* Every Use With Caution marker explains itself on click. */
+.caution-link{cursor:pointer;text-decoration:underline dotted;text-underline-offset:.2em}
+.caution-link:hover{filter:brightness(.92)}.caution-link:focus-visible{outline:.1875rem solid var(--focus);outline-offset:.125rem}
+.caution-dialog h2{font-size:1.25rem;margin:.75rem 0 1rem}.caution-dialog p{font-size:.9375rem;line-height:1.65}
+.caution-dialog .dialog-actions{justify-content:space-between;align-items:center;margin-top:1.25rem}
+
+/* Docs: keep the readable 75rem column whatever the page gutter, and let labels of any length fit. */
+main.docs-page{max-width:calc(75rem + 2*var(--page-gutter))}
+.docs-principles>div{grid-template-columns:1fr;align-items:start;gap:.5rem}
+.run-status.partial{background:var(--demo-bg);color:var(--demo-ink)}
+
+/* Running analysis: the console takes all the free height, so the view never needs its own vertical scrollbar. */
+.workspace-page .report-view.report-progress-view{display:flex;flex-direction:column;overflow:hidden}
+.report-progress-view>.trust-banner{flex:none}
+.workspace-page .analysis-loading.analysis-running{display:flex;flex-direction:column;flex:1 1 0;height:auto;min-height:0;overflow:hidden;padding-bottom:.75rem}
+.analysis-running .analysis-progress{flex:0 1 auto;max-height:40%;overflow:auto}
+.analysis-running #consoleOpen{align-self:flex-start;flex:none}
+.analysis-running .console-panel{flex:1 1 0;min-height:7rem;display:flex;margin-top:.75rem}
+.analysis-running .console-panel[hidden]{display:none}
+.analysis-running .console-log{flex:1;max-height:none;min-height:0;height:auto}
+
+/* Elapsed time of a running analysis; the badge sits above the skill name instead of beside it. */
+.run-elapsed{font-variant-numeric:tabular-nums;font-weight:650;color:var(--ink)!important;margin:.25rem 0 1rem!important}
+.run-skill{display:flex;flex-direction:column;align-items:flex-start;gap:.375rem;margin-bottom:.5rem}
+.run-skill-name{font-weight:600;overflow-wrap:anywhere}
+.skill-row-name{display:flex;flex-direction:column;align-items:flex-start;gap:.375rem}
+.console-setting select{max-width:16rem;margin-top:.5rem}
+.run-skill-name{font-size:.8125rem}

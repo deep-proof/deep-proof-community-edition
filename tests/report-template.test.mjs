@@ -41,7 +41,7 @@ test('review files freeze the selected template and revision; PDF preserves cust
   assert.equal(readArtifact(job,`skills/analysis-type-${type.id}/references/report-template.md`).toString(),template);
   const run={snapshot,result:validateMarkdownReport(customMarkdown,snapshot),created_at:'2026-10-07T00:00:00Z'};
   const html=await reportHTML(run,job);assert.match(html,/<h2>Decision Brief<\/h2>/);assert.match(html,/<h2>Evidence Assessment<\/h2>/);assert.match(html,/Custom Analyst Skill/);assert.doesNotMatch(html,/<h2>Risks<\/h2>/);
-  assert.match(html,/DEMO ONLY/);const verified=await reportHTML({...run,snapshot:{...snapshot,verification:{status:'verified',verifiedBy:'Jane Doe, Example Capital',verifiedOn:'2026-09-30',evaluationCases:120}}},job);assert.match(verified,/VERIFIED SKILL/);assert.match(verified,/Jane Doe, Example Capital/);assert.doesNotMatch(verified,/DEMO ONLY/);
+  assert.match(html,/USE WITH CAUTION/);const verified=await reportHTML({...run,snapshot:{...snapshot,verification:{status:'verified',verifiedBy:'Jane Doe, Example Capital',verifiedOn:'2026-09-30',evaluationCases:120}}},job);assert.match(verified,/VERIFIED SKILL/);assert.match(verified,/Jane Doe, Example Capital/);assert.doesNotMatch(verified,/UNVALIDATED/);
   const french=await reportHTML({...run,snapshot:{...snapshot,report_language:'fr',type:{...snapshot.type,report_language:'ro'}}},job);assert.match(french,/<html lang="fr">/);
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });

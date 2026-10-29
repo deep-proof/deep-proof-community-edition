@@ -17,6 +17,7 @@ export function readALACatalog(entry,agent){
   child.on('close',code=>{if(code!==0)return finish(unavailable());try{finish(null,JSON.parse(output));}catch{finish(unavailable());}});
  });
 }
+const cleanEfforts=list=>Array.isArray(list)?[...new Set(list.filter(e=>typeof e==='string'&&/^[A-Za-z0-9_-]{1,64}$/.test(e)))]:[];
 export function createALACatalog(locate,{read=(agent)=>readALACatalog(locate()?.entry,agent),ttl=60000}={}){
  const cached=new Map(),pending=new Map();
  async function fetchCatalog(key,agent){
@@ -26,7 +27,7 @@ export function createALACatalog(locate,{read=(agent)=>readALACatalog(locate()?.
   const job=(async()=>{
    const result=await read(agent),field=agent?'models':'agents';
    if(!Array.isArray(result?.[field]))throw unavailable();
-   const seen=new Set(),values=result[field].filter(item=>typeof item?.id==='string'&&item.id.length>0&&item.id.length<=256&&!/[\r\n\0]/.test(item.id)).filter(item=>{if(seen.has(item.id))return false;seen.add(item.id);return true;}).map(item=>({id:item.id,label:typeof item.label==='string'?item.label.slice(0,256):item.id,...(!agent?{available:item.available===true}:{})}));
+   const seen=new Set(),values=result[field].filter(item=>typeof item?.id==='string'&&item.id.length>0&&item.id.length<=256&&!/[\r\n\0]/.test(item.id)).filter(item=>{if(seen.has(item.id))return false;seen.add(item.id);return true;}).map(item=>({id:item.id,label:typeof item.label==='string'?item.label.slice(0,256):item.id,...(!agent?{available:item.available===true}:{}),...(agent&&cleanEfforts(item.efforts).length?{efforts:cleanEfforts(item.efforts)}:{})}));
    const value={[field]:values};cached.set(key,{value,until:Date.now()+ttl});return value;
   })();pending.set(key,job);try{return await job;}finally{pending.delete(key);}
  }
@@ -37,8 +38,12 @@ export function createALACatalog(locate,{read=(agent)=>readALACatalog(locate()?.
   async validate(body){
    if(typeof body.agent!=='string'||typeof body.model!=='string')throw Object.assign(Error('Choose a Agent and Model.'),{status:400});
    const {agents}=await fetchCatalog('agents');if(!agents.some(a=>a.id===body.agent&&a.available))throw Object.assign(Error('Choose an installed Agent.'),{status:400});
-   if(body.model){const {models}=await this.models(body.agent);if(!models.some(m=>m.id===body.model))throw Object.assign(Error('Choose a model supported by the selected Agent.'),{status:400});}
-   return {agent:body.agent,models:body.model?{[body.agent]:body.model}:{},efforts:{}};
+   let effort='';
+   if(body.effort!==undefined&&body.effort!==''&&typeof body.effort!=='string')throw Object.assign(Error('Choose a supported Effort.'),{status:400});
+   if(body.model){const {models}=await this.models(body.agent),model=models.find(m=>m.id===body.model);if(!model)throw Object.assign(Error('Choose a model supported by the selected Agent.'),{status:400});
+    if(body.effort){if(!model.efforts?.includes(body.effort))throw Object.assign(Error('Choose an Effort supported by the selected Model.'),{status:400});effort=body.effort;}}
+   else if(body.effort)throw Object.assign(Error('Choose a Model before choosing an Effort.'),{status:400});
+   return {agent:body.agent,models:body.model?{[body.agent]:body.model}:{},efforts:effort?{[body.agent]:effort}:{}};
   }
  };
 }

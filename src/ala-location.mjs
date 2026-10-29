@@ -2,14 +2,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 const ENTRY=path.join('bin','ala.mjs');
+// dependencies is true when ALA declares none (it needs no install) or its node_modules folder exists.
 // Accept an ALA checkout folder or its bin/ala.mjs entrypoint.
 function inspect(candidate){
  let entry=path.resolve(candidate);
  try{if(fs.statSync(entry).isDirectory())entry=path.join(entry,ENTRY);entry=fs.realpathSync(entry);}catch{return {valid:false,reason:'Not found.'};}
  const alaRoot=path.dirname(path.dirname(entry));
- let name;try{name=JSON.parse(fs.readFileSync(path.join(alaRoot,'package.json'),'utf8')).name;}catch{}
+ let name,declared=0;try{const pkg=JSON.parse(fs.readFileSync(path.join(alaRoot,'package.json'),'utf8'));name=pkg.name;declared=Object.keys({...pkg.dependencies,...pkg.optionalDependencies}).length;}catch{}
  if(path.basename(entry)!=='ala.mjs'||name!=='advanced-language-agent'||!fs.existsSync(path.join(alaRoot,'src/coding-agents/discovery.mjs')))return {valid:false,reason:'This location is not an ALA installation.'};
- return {valid:true,entry,alaRoot,dependencies:fs.existsSync(path.join(alaRoot,'node_modules'))};
+ return {valid:true,entry,alaRoot,dependencies:declared===0||fs.existsSync(path.join(alaRoot,'node_modules'))};
 }
 function onPath(){
  for(const folder of (process.env.PATH||'').split(path.delimiter).filter(Boolean)){const file=path.join(folder,'ala');try{if(fs.statSync(file).isFile())return fs.realpathSync(file);}catch{}}

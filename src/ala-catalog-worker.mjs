@@ -18,7 +18,7 @@ try{
   const service=createCodingAgentService({agents,workspace,env});
   const models=await service.listModels(agent,{details:true,signal:AbortSignal.timeout(20000)});
   if(!Array.isArray(models))throw Error('ALA returned an invalid model catalog.');
-  process.stdout.write(JSON.stringify({models:models.map(m=>typeof m==='string'?{id:m,label:m}:{id:m.id,label:m.label||m.id})}));
+  process.stdout.write(JSON.stringify({models:models.map(m=>typeof m==='string'?{id:m,label:m}:{id:m.id,label:m.label||m.id,efforts:Array.isArray(m.efforts)?m.efforts:[]})}));
  }
 }catch(error){process.stderr.write(error.message+'\n');process.exitCode=1;}
 finally{if(workspace)await fs.rm(workspace,{recursive:true,force:true});}

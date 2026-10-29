@@ -1,0 +1,5 @@
+# Methodology and Specification Coverage
+
+The authoritative procedure is in [Common Protocol](protocol.md) and the entrypoint. It applies the user-supplied “Specification for Rigorous Verification of Reports and Decisions”, version 1.0, 2026-10-29. Project-authored instructions are in English; original sources and quotations are never translated.
+
+Stages: mandate and applicability; corpus/version/extraction review; claim/requirement/dependency extraction; evidence and inference tests; active omission and counterevidence search; candidate challenge; root-cause consolidation; distinct serious-finding revisit; severity/urgency/confidence; remedies and closure; registered coverage and seven gates; narrative and structural validation. Consult only relevant domain profiles, combining them for mixed reports. No finding quota and no universal compliance score exists. Evaluation targets are not measured claims. The [Source Map](source-map.md) connects the specification sections to package resources, not to factual project evidence.

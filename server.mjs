@@ -13,6 +13,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import { openStore,id,hashPassword,verifyPassword,transaction } from './src/store.mjs';
 import { invokeALA } from './src/ala.mjs';
 import { reviewPrompt } from './src/reports.mjs';
+import {withQualityWorkspace,publishQualityOutput} from './src/quality-job.mjs';
+import {analysisFailure} from './src/analysis-failure.mjs';
+import {readConsole} from './src/console-feed.mjs';
+import {publishTimeLimited,progressNotes,wrappedUp,convertTimedOutRuns} from './src/partial-result.mjs';
+import {CHECK_MINUTES,ANALYSIS_MINUTES,DEFAULT_ANALYSIS_MINUTES,chooseMinutes,defaultCheckMinutes} from './src/run-limits.mjs';
+import {QUALITY_SKILL_ID,reportQualitySkill,reportQualityFiles,normalizeOptions,importedReport,qualityDocuments,qualityPrompt} from './src/report-quality.mjs';
 import { designInput,designPrompt } from './src/review-design.mjs';
 import {migrateArtifacts,writeProjectFiles,writeAnalysisSources,projectFolder,analysisFolder} from './src/artifacts.mjs';
 import {parseMarkdownReport,renderReportFragment,legacyReportToMarkdown} from './src/markdown-report.mjs';
@@ -33,8 +39,8 @@ const str=(v,max=100000)=>{if(typeof v!=='string'||!v.trim()||v.length>max)fail(
 const password=v=>{if(typeof v!=='string'||v.length<8||v.length>256)fail(400,'New passwords need 8–256 characters.');return v;};
 export function createApp({dir=process.env.ANALYST_DATA_DIR||path.join(root,'.runtime'),catalog,appRoot=root}={}) {
  dir=path.resolve(dir);
- const db=openStore(dir),attempts=new Map(),deletingProjects=new Set(); let jobs=0;
- migrateAccess(db);migrateArtifacts(db,dir);migrateTypeSkills(db,dir);
+ const db=openStore(dir),attempts=new Map(),deletingProjects=new Set(),liveWork=new Map(); let jobs=0;
+ migrateAccess(db);migrateArtifacts(db,dir);migrateTypeSkills(db,dir);convertTimedOutRuns({db,dir});
  const one=(sql,...args)=>db.prepare(sql).get(...args), all=(sql,...args)=>db.prepare(sql).all(...args), run=(sql,...args)=>db.prepare(sql).run(...args);
  const settings=()=>JSON.parse(one('SELECT value FROM settings WHERE id=1')?.value||'{"agent":"codex","models":{"codex":"gpt-6-luna"},"efforts":{}}');
  const saveSettings=value=>run('INSERT INTO settings VALUES(1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value',JSON.stringify(value));
@@ -55,12 +61,15 @@ export function createApp({dir=process.env.ANALYST_DATA_DIR||path.join(root,'.ru
    const file=path.join(analysisFolder(dir,pid,rid),'report.md');
    const markdown=fsSync.existsSync(file)?readArtifact(analysisFolder(dir,pid,rid),'report.md').toString('utf8'):stored?.sections?legacyReportToMarkdown(stored):null;
    if(!markdown)fail(500,'The saved report file is unavailable.');
-   result=parseMarkdownReport(markdown);
-   result.sections=result.sections.map(section=>({...section,html:renderReportFragment(section.markdown,{criteria:section.title===criteriaChapter(snapshot)?snapshot.type.criteria:undefined,language:runReportLanguage(snapshot).code,imageURL:name=>`/api/projects/${pid}/analyses/${rid}/charts/${name}`})}));
+   result=snapshot.kind==='imported'||stored?.partial?importedReport(stored?.partial?markdown.replace(/^# .+\r?\n+/,''):markdown,snapshot.title||/^# (.+)$/m.exec(markdown)?.[1]):parseMarkdownReport(markdown);
+   if(snapshot.kind!=='imported'&&!stored?.partial)result.sections=result.sections.map(section=>({...section,html:renderReportFragment(section.markdown,{criteria:section.title===criteriaChapter(snapshot)?snapshot.type.criteria:undefined,language:runReportLanguage(snapshot).code,imageURL:name=>`/api/projects/${pid}/analyses/${rid}/charts/${name}`})}));
   }
+  if(result&&stored?.partial)result.partial=stored.partial;
+  if(result&&stored?.timeLimited)result.timeLimited=true;
+  if(result&&stored?.quality&&!stored.partial){result.quality=stored.quality;for(const section of result.sections)section.html=section.html.replace(/href="(quality\/[^"]+)"/g,(_,file)=>`href="/api/projects/${pid}/analyses/${rid}/verification?file=${encodeURIComponent(file)}"`);}
   if(result){for(const c of Object.values(result.citations))c.html=renderMarkdown(c.quote);for(const d of snapshot.documents)d.html=renderMarkdown(d.markdown);}
   delete snapshot.settings;if(snapshot.type){delete snapshot.type.generation_input;delete snapshot.type.generation_error;}
-  return {id:r.id,project_id:r.project_id,created_at:r.created_at,status:r.status,snapshot,result};
+  return {id:r.id,project_id:r.project_id,created_at:r.created_at,status:r.status,snapshot,result,...(r.status==='failed'?{failure:analysisFailure(r.error)}:{}),...(r.status==='running'?{console:settings().showConsole===true}:{})};
  };
  const syncProject=pid=>writeProjectFiles(dir,one('SELECT * FROM projects WHERE id=?',pid),all('SELECT * FROM documents WHERE project_id=?',pid));
 
@@ -77,7 +86,7 @@ export function createApp({dir=process.env.ANALYST_DATA_DIR||path.join(root,'.ru
    res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','same-origin');
    if(!p.startsWith('/api/')) {
     if(p==='/docs/skill-verification.md'){res.setHeader('content-type','text/markdown; charset=utf-8');res.setHeader('cache-control','no-store');return res.end(await fs.readFile(path.join(root,'docs/skill-verification.md')));}
-    const files={'/':'index.html','/web/app.js':'app.js','/web/access.js':'access.js','/web/configuration.js':'configuration.js','/web/report-languages.js':'report-languages.js','/web/markdown.js':'markdown.js','/web/markdown.css':'markdown.css','/web/review-rules.js':'review-rules.js','/web/styles.css':'styles.css','/web/logo.svg':'logo.svg','/web/theme.js':'theme.js','/web/i18n.js':'i18n.js','/web/i18n/en.js':'i18n/en.js','/web/i18n/de.js':'i18n/de.js','/web/i18n/fr.js':'i18n/fr.js','/web/i18n/it.js':'i18n/it.js','/web/i18n/rm.js':'i18n/rm.js','/web/i18n/es.js':'i18n/es.js','/web/i18n/nl.js':'i18n/nl.js','/web/i18n/pl.js':'i18n/pl.js','/web/i18n/pt.js':'i18n/pt.js','/web/i18n/ro.js':'i18n/ro.js'};
+    const files={'/':'index.html','/web/app.js':'app.js','/web/access.js':'access.js','/web/configuration.js':'configuration.js','/web/report-languages.js':'report-languages.js','/web/markdown.js':'markdown.js','/web/markdown.css':'markdown.css','/web/review-rules.js':'review-rules.js','/web/caution.js':'caution.js','/web/styles.css':'styles.css','/web/logo.svg':'logo.svg','/web/theme.js':'theme.js','/web/i18n.js':'i18n.js','/web/i18n/en.js':'i18n/en.js','/web/i18n/de.js':'i18n/de.js','/web/i18n/fr.js':'i18n/fr.js','/web/i18n/it.js':'i18n/it.js','/web/i18n/rm.js':'i18n/rm.js','/web/i18n/es.js':'i18n/es.js','/web/i18n/nl.js':'i18n/nl.js','/web/i18n/pl.js':'i18n/pl.js','/web/i18n/pt.js':'i18n/pt.js','/web/i18n/ro.js':'i18n/ro.js'};
     if(!Object.hasOwn(files,p))fail(404,'Not found.');res.setHeader('cache-control','no-store');
     res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
     res.setHeader('content-type',{'html':'text/html','js':'text/javascript','css':'text/css','svg':'image/svg+xml'}[files[p].split('.').pop()]);const content=await fs.readFile(path.join(root,'web',files[p]));
@@ -199,8 +208,10 @@ export function createApp({dir=process.env.ANALYST_DATA_DIR||path.join(root,'.ru
     if(p==='/api/admin/coding-agents'&&method==='GET'){const result=await catalog.agents({refresh:url.searchParams.get('refresh')==='1'});requireSession();return send(result);}
     const modelCatalog=/^\/api\/admin\/coding-agents\/([^/]+)\/models$/.exec(p);
     if(modelCatalog&&method==='GET'){const result=await catalog.models(decodeURIComponent(modelCatalog[1]),{refresh:url.searchParams.get('refresh')==='1'});requireSession();return send(result);}
-    if(p==='/api/admin/settings'&&method==='GET'){const current=settings();return send({agent:current.agent,model:current.models?.[current.agent]||''});}
-    if(p==='/api/admin/settings'&&method==='POST'){const b=await body(req),selection=await catalog.validate(b);requireSession();const {alaPath}=settings();saveSettings(alaPath?{...selection,alaPath}:selection);return send({ok:true});}
+    if(p==='/api/admin/settings'&&method==='GET'){const current=settings();return send({agent:current.agent,model:current.models?.[current.agent]||'',effort:current.efforts?.[current.agent]||'',console:current.showConsole===true,analysisLimit:current.analysisLimitMinutes||DEFAULT_ANALYSIS_MINUTES});}
+    if(p==='/api/admin/settings'&&method==='POST'){const b=await body(req),selection=await catalog.validate(b);requireSession();const {alaPath,showConsole,analysisLimitMinutes}=settings();saveSettings({...selection,...(alaPath?{alaPath}:{}),...(showConsole?{showConsole:true}:{}),...(analysisLimitMinutes?{analysisLimitMinutes}:{})});return send({ok:true});}
+    if(p==='/api/admin/analysis-limit'&&method==='POST'){const b=await body(req);let minutes;try{minutes=chooseMinutes(b.minutes,ANALYSIS_MINUTES,null);if(minutes===null)throw Error('Choose one of the offered time limits.');}catch(error){fail(400,error.message);}requireSession();saveSettings({...settings(),analysisLimitMinutes:minutes});return send({analysisLimit:minutes});}
+    if(p==='/api/admin/console'&&method==='POST'){const b=await body(req);if(typeof b.enabled!=='boolean')fail(400,'Choose on or off.');requireSession();const {showConsole,...current}=settings();saveSettings(b.enabled?{...current,showConsole:true}:current);return send({console:b.enabled});}
     if(p==='/api/admin/ala'&&method==='GET')return send(alaStatus());
     if(p==='/api/admin/ala'&&method==='POST'){const b=await body(req),location=b.path===null||b.path===''?null:validateALALocation(b.path),{alaPath,...current}=settings();saveSettings(location?{...current,alaPath:location}:current);catalog.clear?.();return send(alaStatus());}
     if(p==='/api/admin/generate'&&method==='POST'){
@@ -248,15 +259,45 @@ export function createApp({dir=process.env.ANALYST_DATA_DIR||path.join(root,'.ru
     }catch{stop();}finally{busy=false;}};
     const interval=setInterval(tick,1500);const stop=()=>{closed=true;clearInterval(interval);res.end();};res.on('close',()=>{closed=true;clearInterval(interval);});void tick();return;
    }
+   const consoleFeed=/^\/api\/projects\/([^/]+)\/analyses\/([^/]+)\/console$/.exec(p);
+   if(consoleFeed&&method==='GET'){
+    getProject(u,consoleFeed[1]);if(settings().showConsole!==true)fail(404,'The live console is turned off.');if(!one('SELECT id FROM runs WHERE id=? AND project_id=?',consoleFeed[2],consoleFeed[1]))fail(404,'Analysis not found.');
+    res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-cache, no-transform','connection':'keep-alive','X-Accel-Buffering':'no'});res.flushHeaders();
+    let sent=0,closed=false,busy=false,announced=false;const emit=(event,data)=>res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    const tick=async()=>{if(closed||busy)return;busy=true;try{
+     const current=one('SELECT users.* FROM sessions JOIN users ON users.id=sessions.user_id WHERE token=? AND expires>? AND active=1',digest,Date.now());
+     if(!current||settings().showConsole!==true){emit('revoked',{});return stop();}try{getProject(current,consoleFeed[1]);}catch{emit('revoked',{});return stop();}
+     const run=one('SELECT status FROM runs WHERE id=? AND project_id=?',consoleFeed[2],consoleFeed[1]);if(!run){emit('revoked',{});return stop();}
+     const feed=readConsole(liveWork.get(consoleFeed[2])||analysisFolder(dir,consoleFeed[1],consoleFeed[2]),sent);
+     if(closed)return;sent=feed.total;if(!feed.available&&!announced){announced=true;emit('unavailable',{});}if(feed.lines.length)emit('lines',{lines:feed.lines});
+     emit('status',{status:run.status});if(run.status!=='running')stop();
+    }catch{stop();}finally{busy=false;}};
+    const interval=setInterval(tick,1500);const stop=()=>{closed=true;clearInterval(interval);res.end();};res.on('close',()=>{closed=true;clearInterval(interval);});void tick();return;
+   }
+   const verificationFiles=/^\/api\/projects\/([^/]+)\/analyses\/([^/]+)\/verification$/.exec(p);
+   if(verificationFiles&&method==='GET'){
+    getProject(u,verificationFiles[1]);const report=getRun(verificationFiles[1],verificationFiles[2]);if(report.status!=='completed'||!report.result.quality)fail(404,'Verification records are not available.');
+    const folder=analysisFolder(dir,verificationFiles[1],verificationFiles[2]),index=JSON.parse(readArtifact(folder,'verification-index.json'));
+    const requested=url.searchParams.get('file');if(requested&&!index.files.some(file=>file.name===requested))fail(404,'Verification artifact not found.');
+    const files=index.files.filter(file=>!requested||file.name===requested).map(file=>{const bytes=readArtifact(folder,file.name,30*1024*1024);if(createHash('sha256').update(bytes).digest('hex')!==file.sha256)fail(409,'A verification artifact has changed since publication.');const encoding=/\.(pdf|docx?|pptx?|png)$/.test(file.name)?'base64':'utf8';return {...file,encoding,content:bytes.toString(encoding)};});
+    res.setHeader('cache-control','private, no-store');res.setHeader('content-type',requested?.endsWith('.md')?'text/markdown; charset=utf-8':'application/json; charset=utf-8');res.setHeader('content-disposition',`attachment; filename="verification-${verificationFiles[2]}.json"`);return res.end(requested?Buffer.from(files[0].content,files[0].encoding):JSON.stringify({schemaVersion:1,runId:report.id,methodologyRevision:report.snapshot.type.methodology_revision,files}));
+   }
+   const originalReport=/^\/api\/projects\/([^/]+)\/analyses\/([^/]+)\/original$/.exec(p);
+   if(originalReport&&method==='GET'){
+    getProject(u,originalReport[1]);const report=getRun(originalReport[1],originalReport[2]),original=report.snapshot.original;
+    if(!original)fail(404,'Original report file not found.');
+    const bytes=readArtifact(analysisFolder(dir,originalReport[1],originalReport[2]),'original.'+original.type,30*1024*1024);
+    res.setHeader('content-type',mimeFor(original.type));res.setHeader('content-disposition',`attachment; filename="report.${original.type}"`);res.setHeader('cache-control','private, no-store');return res.end(bytes);
+   }
    const asset=/^\/api\/projects\/([^/]+)\/analyses\/([^/]+)\/(pdf|charts\/([a-zA-Z0-9_-]+\.(?:svg|png)))$/.exec(p);
    if(asset&&method==='GET'){
     getProject(u,asset[1]);const report=getRun(asset[1],asset[2]);if(report.status!=='completed')fail(409,'The report is not ready yet.');
     const folder=analysisFolder(dir,asset[1],asset[2]);let file;
-    if(asset[3]==='pdf'){file=await createPDF(report,folder);res.setHeader('content-type','application/pdf');res.setHeader('content-disposition',`attachment; filename="Deep-Proof-${runVerification(report.snapshot).status==='verified'?'':'DEMO-ONLY-'}${asset[2]}.pdf"`);}
+    if(asset[3]==='pdf'){file=await createPDF(report,folder);res.setHeader('content-type','application/pdf');res.setHeader('content-disposition',`attachment; filename="Deep-Proof-${runVerification(report.snapshot).status==='verified'?'':'USE-WITH-CAUTION-'}${asset[2]}.pdf"`);}
     else{if(!report.result.chartFiles.includes(asset[4]))fail(404,'Chart not found.');file=path.join(folder,'charts',asset[4]);res.setHeader('content-type',asset[4].endsWith('.svg')?'image/svg+xml':'image/png');res.setHeader('Content-Security-Policy',"default-src 'none'; sandbox");}
     const current=requireSession();getProject(current,asset[1]);const bytes=readArtifact(folder,path.relative(folder,file),30*1024*1024);if(asset[4]?.endsWith('.svg'))safeSVG(bytes.toString('utf8'));res.setHeader('cache-control','private, no-store');return res.end(bytes);
    }
-   const m=/^\/api\/projects\/([^/]+)(?:\/(documents|analyses|archive|access)(?:\/([^/]+))?)?$/.exec(p);
+   const m=/^\/api\/projects\/([^/]+)(?:\/(documents|analyses|report-imports|archive|access)(?:\/([^/]+))?)?$/.exec(p);
    if(m){const project=getProject(u,m[1]),pid=project.id;
     if(m[2]==='access'&&!m[3]){
      if(u.role!=='admin'&&project.owner_id!==u.id)fail(403,'Only the project owner or an administrator can manage Project Access.');
@@ -270,7 +311,7 @@ export function createApp({dir=process.env.ANALYST_DATA_DIR||path.join(root,'.ru
      const archivedAt=b.archived?(project.archived_at||new Date().toISOString()):null;
      run('UPDATE projects SET archived_at=? WHERE id=?',archivedAt,pid);syncProject(pid);return send({id:pid,archived_at:archivedAt});
     }
-    if(project.archived_at&&method==='POST'&&['documents','analyses'].includes(m[2]))fail(409,'This project is archived. Restore it before making changes.');
+    if(project.archived_at&&method==='POST'&&['documents','analyses','report-imports'].includes(m[2]))fail(409,'This project is archived. Restore it before making changes.');
 
     if(!m[2]&&method==='DELETE'){
      if(u.role!=='admin')fail(403,'Only administrators can delete projects.');
@@ -295,24 +336,61 @@ export function createApp({dir=process.env.ANALYST_DATA_DIR||path.join(root,'.ru
      if(uploaded){writeArtifact(folder,did+'.'+uploaded.type,uploaded.buffer);if(uploaded.preview)writeArtifact(folder,did+'.preview.pdf',uploaded.preview);}
      run('INSERT INTO documents(id,project_id,title,markdown,file_type,original_name) VALUES(?,?,?,?,?,?)',did,pid,title,markdown,uploaded?.type||'md',uploaded?.name||null);syncProject(pid);return send({id:did},201);
     }
-    if(m[2]==='analyses'&&method==='GET'){if(m[3])return send(getRun(pid,m[3]));return send(all('SELECT id,created_at,status,snapshot FROM runs WHERE project_id=? ORDER BY created_at DESC',pid).map(({snapshot,...r})=>({...r,report_language:runReportLanguage(JSON.parse(snapshot)).code,skill:{id:JSON.parse(snapshot).type.id,name:JSON.parse(snapshot).type.name,revision:JSON.parse(snapshot).type.skill_revision},verification:runVerification(JSON.parse(snapshot))})));}
+    if(m[2]==='report-imports'&&method==='POST'&&!m[3]){
+     const b=await body(req,30*1024*1024),title=str(b.title,160),language=reportLanguage(b.report_language).code,upload=await processUpload(b.file,title);
+     const current=getProject(requireSession(),pid);if(current.archived_at)fail(409,'This project is archived. Restore it before making changes.');
+     const rid=id(),created=new Date().toISOString(),snapshot={kind:'imported',title,project:current,report_language:language,type:{id:'external-report',name:'Imported Report',criteria:'',playbook:''},verification:{status:'demo'},documents:[],original:{name:upload.name,type:upload.type,sha256:createHash('sha256').update(upload.buffer).digest('hex')},imported_by:u.id};
+     const folder=analysisFolder(dir,pid,rid);writeAnalysisSources(folder,snapshot);writeArtifact(folder,'report.md',upload.markdown);writeArtifact(folder,'original.'+upload.type,upload.buffer);if(upload.preview)writeArtifact(folder,'original.preview.pdf',upload.preview);
+     run('INSERT INTO runs VALUES(?,?,?,?,?,?,?)',rid,pid,created,'completed',JSON.stringify(snapshot),JSON.stringify({format:'markdown'}),null);
+     return send({id:rid,status:'completed'},201);
+    }
+    if(m[2]==='analyses'&&method==='GET'){if(m[3])return send(getRun(pid,m[3]));return send(all('SELECT id,created_at,status,snapshot,result,error FROM runs WHERE project_id=? ORDER BY created_at DESC',pid).map(({snapshot,result,error,...r})=>{const s=JSON.parse(snapshot);let quality,cut=false;if(r.status==='completed'){try{const stored=JSON.parse(result);cut=!!(stored?.partial||stored?.timeLimited);const q=s.kind==='quality'?stored?.quality:null;if(q)quality={completion:q.completion,confirmedFindings:q.confirmedFindings,...(q.timeLimited?{timeLimited:true}:{}),...(Array.isArray(q.findings)?{findings:q.findings}:{})};}catch{}}return {...r,kind:s.kind||'analysis',title:s.title,sourceReport:s.sourceReport,report_language:runReportLanguage(s).code,skill:{id:s.type.id,name:s.type.name,revision:s.type.skill_revision},verification:runVerification(s),...(s.kind==='quality'?{options:{depth:s.qualityOptions?.depth||'deep',researchMode:s.qualityOptions?.researchMode||'closed',...(s.timeLimitMinutes?{timeLimitMinutes:s.timeLimitMinutes}:{})}}:{}),...(quality?{quality}:{}),...(cut?{timeLimited:true}:{}),...(r.status==='failed'?{failure:analysisFailure(error)}:{})};}));}
     if(m[2]==='analyses'&&method==='POST'&&!m[3]){
      const request=await body(req),currentProject=getProject(requireSession(),pid);if(currentProject.archived_at)fail(409,'This project is archived. Restore it before making changes.');
      if(jobs>=2||one("SELECT id FROM runs WHERE project_id=? AND status='running'",pid))fail(409,'Analysis is already running.');
-     const skillId=request.skillId||request.typeId;if(typeof skillId!=='string'||!skillId)fail(400,'Choose an Analyst Skill.');
-     if(!can(u,skillId))fail(403,'Analyst Skill not allowed.');
-     const selectedSkill=one('SELECT * FROM types WHERE id=?',skillId);if(!selectedSkill)fail(404,'Analyst Skill not found.');
+     const quality=request.sourceReportId!==undefined;
+     if(quality&&(typeof request.sourceReportId!=='string'||!request.sourceReportId))fail(400,'Choose a report to check.');
+     const source=quality?getRun(pid,request.sourceReportId):null;if(source&&source.status!=='completed')fail(409,'The report is not ready yet.');
+     // A report check always uses the built-in adversarial verification skill; it is never chosen per run.
+     if(quality&&(request.skillId||request.typeId)&&(request.skillId||request.typeId)!==QUALITY_SKILL_ID)fail(400,'Reports are checked with the built-in verification skill.');
+     const skillId=quality?QUALITY_SKILL_ID:(request.skillId||request.typeId);if(typeof skillId!=='string'||!skillId)fail(400,'Choose an Analyst Skill.');
+     const builtin=quality&&skillId===QUALITY_SKILL_ID;
+     if(!builtin&&!can(u,skillId))fail(403,'Analyst Skill not allowed.');
+     const selectedSkill=builtin?reportQualitySkill():one('SELECT * FROM types WHERE id=?',skillId);if(!selectedSkill)fail(404,'Analyst Skill not found.');
      if(selectedSkill.status!=='ready')fail(409,'The Analyst Skill review rules are not ready yet.');
      const language=reportLanguage(request.report_language).code;
-     const documents=all('SELECT id,title,markdown,file_type,original_name FROM documents WHERE project_id=?',pid);if(!documents.length)fail(400,'Add documents before starting a review.');
+     const projectDocuments=all('SELECT id,title,markdown,file_type,original_name FROM documents WHERE project_id=?',pid);
+     const qualityInput=quality?qualityDocuments(source,source.result.markdown,projectDocuments):null;
+     const documents=qualityInput?.documents||projectDocuments;if(!documents.length)fail(400,'Add documents before starting a review.');
+     if(builtin)for(const document of documents){
+      document.originalFile=`sources/${document.id}.${document.file_type||'md'}`;
+      if((document.file_type||'md')==='md'){document.original_available=true;document.original_sha256=createHash('sha256').update(document.markdown).digest('hex');continue;}
+      const target=document.id===qualityInput.sourceReport.documentId,sourceFolder=target&&source.snapshot.original?analysisFolder(dir,pid,source.id):source.snapshot.kind!=='imported'?analysisFolder(dir,pid,source.id):projectFolder(dir,pid);
+      const name=target&&source.snapshot.original?'original.'+document.file_type:source.snapshot.kind!=='imported'?`sources/${document.id}.${document.file_type}`:`documents/${document.id}.${document.file_type}`;
+      try{const bytes=readArtifact(sourceFolder,name,30*1024*1024);document.original_available=true;document.original_sha256=createHash('sha256').update(bytes).digest('hex');}catch(error){if(error.code!=='ENOENT')throw error;document.original_available=false;}
+     }
+     let qualityOptions,timeLimitMinutes;try{if(builtin){qualityOptions=normalizeOptions(request.qualityOptions);timeLimitMinutes=chooseMinutes(request.timeLimitMinutes,CHECK_MINUTES,defaultCheckMinutes(qualityOptions.depth));}}catch(error){fail(400,error.message);}
+     // Analyses use the administrator's limit (frozen with the run); checks use the minutes chosen in the dialog.
+     if(timeLimitMinutes===undefined)timeLimitMinutes=settings().analysisLimitMinutes||DEFAULT_ANALYSIS_MINUTES;
      requireALA();
-     const ensured=ensureTypeSkill(db,dir,selectedSkill);
-     // The Demo Only / Verified label is fixed when the run is created and travels with the report.
-     const rid=id(),snapshot={project,report_language:language,type:skillInfo(ensured),verification:skillVerification(dir,ensured),reportTemplate:skillReportTemplate(dir,selectedSkill),documents,settings:settings()},created=new Date().toISOString();
+     const ensured=builtin?{...selectedSkill,skill_revision:saveSkillRevision(dir,selectedSkill,reportQualityFiles())}:ensureTypeSkill(db,dir,selectedSkill);
+     // The unvalidated / verified state is fixed when the run is created and travels with the report.
+     const rid=id(),snapshot={project:currentProject,report_language:language,type:skillInfo(ensured),verification:skillVerification(dir,ensured),reportTemplate:skillReportTemplate(dir,ensured),documents,settings:settings(),timeLimitMinutes,...(quality?{kind:'quality',sourceReport:qualityInput.sourceReport,...(builtin?{qualityOptions}: {})}:{})},created=new Date().toISOString();
      run('INSERT INTO runs VALUES(?,?,?,?,?,?,?)',rid,pid,created,'running',JSON.stringify(snapshot),null,null);writeAnalysisSources(analysisFolder(dir,pid,rid),snapshot);
-     for(const document of documents){for(const ext of [document.file_type,['doc','docx','ppt','pptx'].includes(document.file_type)?'preview.pdf':null].filter(Boolean)){if(ext==='md')continue;const source=path.join(projectFolder(dir,pid),'documents',document.id+'.'+ext);if(fsSync.existsSync(source))fsSync.copyFileSync(source,path.join(analysisFolder(dir,pid,rid),'sources',document.id+'.'+ext));}}
+     const evidenceFolder=quality&&source.snapshot.kind!=='imported'?path.join(analysisFolder(dir,pid,source.id),'sources'):path.join(projectFolder(dir,pid),'documents');
+     for(const document of documents){for(const ext of [document.file_type,['doc','docx','ppt','pptx'].includes(document.file_type)?'preview.pdf':null].filter(Boolean)){if(ext==='md')continue;const file=path.join(evidenceFolder,document.id+'.'+ext);if(fsSync.existsSync(file))fsSync.copyFileSync(file,path.join(analysisFolder(dir,pid,rid),'sources',document.id+'.'+ext));}}
+     if(quality&&source.snapshot.original){
+      const sourceFolder=analysisFolder(dir,pid,source.id),targetFolder=analysisFolder(dir,pid,rid),targetId=qualityInput.sourceReport.documentId;
+      for(const [from,to] of [['original.'+source.snapshot.original.type,`sources/${targetId}.${source.snapshot.original.type}`],['original.preview.pdf',`sources/${targetId}.preview.pdf`]])try{writeArtifact(targetFolder,to,readArtifact(sourceFolder,from,30*1024*1024));}catch(error){if(error.code!=='ENOENT')throw error;}
+     }
      jobs++;
-     Promise.resolve().then(()=>invokeALA({root,dir:analysisFolder(dir,pid,rid),settings:snapshot.settings,input:snapshot,prompt:reviewPrompt(snapshot),artifactDir:dir})).then(async()=>{await readValidatedOutput(analysisFolder(dir,pid,rid),snapshot,'analysis');run("UPDATE runs SET status='completed',result=? WHERE id=?",JSON.stringify({format:'markdown'}),rid);}).catch(e=>run("UPDATE runs SET status='failed',error=? WHERE id=?",e.message,rid)).finally(()=>jobs--);
+     const folder=analysisFolder(dir,pid,rid),prompt=(quality?qualityPrompt(snapshot):'')+reviewPrompt(snapshot).replace('Do not browse.',builtin&&qualityOptions.researchMode==='external'?'Public external research is explicitly authorized for this run. Do not transmit confidential source text or personal data. Retain dated public sources under quality/external-sources.jsonl and use the rigorous skill evidence rules.':'Do not browse.');
+     Promise.resolve().then(async()=>{
+      if(builtin)return withQualityWorkspace(folder,snapshot,async workspace=>{liveWork.set(rid,workspace);let cut=false;try{await invokeALA({root,dir:workspace,settings:snapshot.settings,input:snapshot,prompt,artifactDir:dir,progressDir:folder});cut=wrappedUp(workspace);}catch(error){if(error.code!=='TIME_LIMIT')throw error;let partial=null;try{partial=await readValidatedOutput(workspace,snapshot,'analysis');}catch{}if(!['incomplete','triage'].includes(partial?.quality?.completion))return publishTimeLimited({folder,snapshot,progress:progressNotes(workspace)||progressNotes(folder)});cut=true;}const published=await publishQualityOutput(workspace,folder,snapshot,dir);return cut?{...published,timeLimited:true}:published;});
+      liveWork.set(rid,folder);
+      try{await invokeALA({root,dir:folder,settings:snapshot.settings,input:snapshot,prompt,artifactDir:dir});await readValidatedOutput(folder,snapshot,'analysis');return {format:'markdown',...(wrappedUp(folder)?{timeLimited:true}:{})};}
+      catch(error){if(error.code==='TIME_LIMIT')return publishTimeLimited({folder,snapshot,progress:progressNotes(folder)});throw error;}
+     }).then(result=>run("UPDATE runs SET status='completed',result=? WHERE id=?",JSON.stringify(result),rid)).catch(e=>run("UPDATE runs SET status='failed',error=? WHERE id=?",e.message,rid)).finally(()=>{jobs--;liveWork.delete(rid);});
      return send({id:rid,status:'running'},202);
     }
    }
@@ -321,7 +399,7 @@ export function createApp({dir=process.env.ANALYST_DATA_DIR||path.join(root,'.ru
  });
  return {server,db};
 }
-if(process.argv[1]===fileURLToPath(import.meta.url)){const {server,db}=createApp();server.listen(Number(process.env.PORT||4174),process.env.HOST||'127.0.0.1',()=>{
+if(process.argv[1]===fileURLToPath(import.meta.url)){const {server,db}=createApp();server.listen(Number(process.env.PORT||8000),process.env.HOST||'127.0.0.1',()=>{
  console.log(`Deep Proof ${edition(root)==='community'?'Community Edition':'(commercial license)'}: http://${process.env.HOST||'127.0.0.1'}:${server.address().port}`);
  const status=resolveALA(root,JSON.parse(db.prepare('SELECT value FROM settings WHERE id=1').get()?.value||'{}'));
  console.log(status.found?`ALA: ${status.entry}${status.dependencies?'':' (dependencies missing: run npm install in the ALA folder)'}`:`ALA not found. Checked: ${status.checked.map(c=>c.location).join(', ')}. Set its location in Administration → Deep Proof Configuration.`);

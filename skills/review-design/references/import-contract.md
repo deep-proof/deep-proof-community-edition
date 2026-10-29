@@ -203,10 +203,10 @@ Import does not call a model. The application checks packaging and the structura
 
 Each review saves the skill name, ID, revision, template, and sources in its own `.runtime/projects/<project-id>/analyses/<analysis-id>/` directory. Later skill changes do not rewrite saved reports. The interface separates chapters from the same `report.md`; the PDF renders that Markdown report, charts, and citations without a second AI generation.
 
-## Verification And Demo Only Status
+## Verification And Use With Caution Status
 
-Every imported skill is **Demo Only** unless its package contains a valid `verification-certificate.md` at the skill root, next to `SKILL.md`. Reports produced with a Demo Only skill are labelled DEMO ONLY from the moment the analysis starts, in the application and on every PDF page. The full standard, including why every skill must be scientifically evaluated and how to run the evaluation, is in `docs/skill-verification.md` and in the application under Documentation.
+Every imported skill is **Use With Caution** unless its package contains a valid `verification-certificate.md` at the skill root, next to `SKILL.md`. Reports produced with a Use With Caution skill are labelled USE WITH CAUTION from the moment the analysis starts, in the application and on every PDF page. The full standard, including why every skill must be scientifically evaluated and how to run the evaluation, is in `docs/skill-verification.md` and in the application under Documentation.
 
 The certificate is written by an accountable reviewer after a scientific evaluation, never by the skill creator and never by an AI system. It starts with YAML frontmatter containing `verified_by` (person, role and organization), `verified_on` (`YYYY-MM-DD`, not in the future) and `evaluation_cases` (a positive whole number); `model` is optional. Its body contains the sections `## Scope`, `## Evaluation Dataset`, `## Method`, `## Results` and `## Limitations`. A malformed certificate makes the import fail. Deep Proof checks structure only; the truth of the attestation is the responsibility of the named reviewer.
 
-Verification applies to one exact methodology. Saving changes to Review Criteria, Review Playbook or Report Template, changing reference files or regenerating the skill creates a Demo Only revision. Renaming keeps verification. Evaluation assets may be shipped under `evals/` as Markdown, JSON or CSV files.
+Verification applies to one exact methodology. Saving changes to Review Criteria, Review Playbook or Report Template, changing reference files or regenerating the skill creates a Use With Caution revision. Renaming keeps verification. Evaluation assets may be shipped under `evals/` as Markdown, JSON or CSV files.

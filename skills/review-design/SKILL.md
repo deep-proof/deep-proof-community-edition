@@ -42,7 +42,7 @@ Helpers use standard Node/Python libraries, read explicit dossier inputs, and wr
 
 ## Verification Status
 
-Every skill you create is **Demo Only**. Never write `verification-certificate.md` and never claim that the skill is verified, validated, certified or production-ready: a creator cannot certify its own work, and Deep Proof discards any certificate found in a generated package. Make the skill measurable instead. Give every criterion an observable test, an explicit treatment of missing evidence and a traceable source for each threshold. When useful, add `evals/evaluation-plan.md` describing the intended test population, critical failure modes, proposed metrics and acceptance thresholds, so an accountable reviewer can evaluate the skill later. Read the Verification section of the [Import Contract](references/import-contract.md).
+Every skill you create is **Use With Caution**. Never write `verification-certificate.md` and never claim that the skill is verified, validated, certified or production-ready: a creator cannot certify its own work, and Deep Proof discards any certificate found in a generated package. Make the skill measurable instead. Give every criterion an observable test, an explicit treatment of missing evidence and a traceable source for each threshold. When useful, add `evals/evaluation-plan.md` describing the intended test population, critical failure modes, proposed metrics and acceptance thresholds, so an accountable reviewer can evaluate the skill later. Read the Verification section of the [Import Contract](references/import-contract.md).
 
 ## Analysis Integration
 

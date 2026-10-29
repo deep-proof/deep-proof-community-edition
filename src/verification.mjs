@@ -1,5 +1,5 @@
 // Analyst Skill verification and product edition. A skill is Verified only when its saved
-// revision carries a structurally valid verification certificate; everything else is Demo Only.
+// revision carries a structurally valid verification certificate; everything else is Use With Caution.
 import fs from 'node:fs';
 import path from 'node:path';
 import {readArtifact} from './safe-files.mjs';

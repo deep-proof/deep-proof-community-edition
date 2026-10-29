@@ -39,7 +39,9 @@ test('ALA locations must be real ALA checkouts; explicit locations are never sil
   assert.equal(validateALALocation(folder),folder);assert.throws(()=>validateALALocation('relative/ala'),/absolute/);
   const saved=process.env.ALA_CLI;delete process.env.ALA_CLI;
   try{
-   const found=resolveALA(process.cwd(),{alaPath:folder});assert.equal(found.found,true);assert.equal(found.source,'configured');assert.equal(found.entry,path.join(await fs.realpath(folder),'bin/ala.mjs'));assert.equal(found.dependencies,false);
+   const found=resolveALA(process.cwd(),{alaPath:folder});assert.equal(found.found,true);assert.equal(found.source,'configured');assert.equal(found.entry,path.join(await fs.realpath(folder),'bin/ala.mjs'));assert.equal(found.dependencies,true);
+   await fs.writeFile(path.join(folder,'package.json'),JSON.stringify({name:'advanced-language-agent',dependencies:{left:'1.0.0'}}));assert.equal(resolveALA(process.cwd(),{alaPath:folder}).dependencies,false);
+   await fs.mkdir(path.join(folder,'node_modules'));assert.equal(resolveALA(process.cwd(),{alaPath:folder}).dependencies,true);
    const missing=resolveALA(process.cwd(),{alaPath:path.join(folder,'absent')});assert.equal(missing.found,false);assert.equal(missing.checked.length,1);
   }finally{if(saved!==undefined)process.env.ALA_CLI=saved;}
  }finally{await fs.rm(folder,{recursive:true,force:true});}
